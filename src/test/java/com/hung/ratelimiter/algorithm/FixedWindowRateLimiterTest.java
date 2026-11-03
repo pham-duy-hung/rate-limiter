@@ -52,4 +52,17 @@ class FixedWindowRateLimiterTest {
         send(5);
         assertEquals(7_000,limiter.tryAcquire("u1").retryAfterMillis());
     }
+    @Test
+    void evictsIdleKeys() {
+        limiter.isAllowed("a");
+        limiter.isAllowed("b");
+        assertEquals(2, limiter.trackedKeys());
+
+        time.advance(100_000);
+        limiter.isAllowed("c");          // key c mới
+        limiter.evictIdle(60_000);
+
+        assertEquals(1, limiter.trackedKeys());   // chỉ còn c
+    }
+
 }

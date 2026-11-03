@@ -7,7 +7,7 @@ public interface RateLimiter {
     default boolean isAllowed(String key){
         return tryAcquire(key).allowed();
     }
-    default void ecictIdle(long idleMs){
+    default void evictIdle(long idleMs){
         //không làm gì
     }
 }
