@@ -28,6 +28,7 @@ public class SlidingWindowCounterRateLimiter implements RateLimiter {
         State s = states.computeIfAbsent(key, k -> new State(currStart));
 
         synchronized (s) {
+            s.lastAccess = now;
             if(s.currStart != currStart){
                 // cửa sổ sau thì prev = cur,  bỏ qua >=1 cửa sổ thì prev = 0
                 s.prev = (currStart - s.currStart == windowMs) ? s.curr : 0;
@@ -52,5 +53,18 @@ public class SlidingWindowCounterRateLimiter implements RateLimiter {
         State(long currStart){
             this.currStart = currStart;
         }
+        long lastAccess;
+    }
+    public void evictIdle(long idleMs){
+        long now = time.nowMillis();
+        states.entrySet().removeIf(e -> {
+            SlidingWindowCounterRateLimiter.State s = e.getValue();
+            synchronized (s) {
+                return  now  - s.lastAccess > idleMs;
+            }
+        });
+    }
+    public int trackedKeys(){
+        return states.size();
     }
 }

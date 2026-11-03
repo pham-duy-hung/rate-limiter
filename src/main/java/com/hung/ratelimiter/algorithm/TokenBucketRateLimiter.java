@@ -20,29 +20,54 @@ public class TokenBucketRateLimiter implements RateLimiter {
         this.refillPerSecond = refillPerSecond;
         this.time = Objects.requireNonNull(time);
     }
+
     @Override
-    public RateLimitResult tryAcquire(String key){
+    public RateLimitResult tryAcquire(String key) {
         long now = time.nowMillis();
-        Bucket bucket= buckets.computeIfAbsent(key, k -> new Bucket(capacity,now));
-        synchronized (bucket){
+        Bucket bucket = buckets.computeIfAbsent(key, k -> new Bucket(capacity, now));
+
+        synchronized (bucket) {
+            // Cập nhật mốc thời gian truy cập gần nhất để phục vụ dọn dẹp (eviction)
+            bucket.lastAccess = now;
+
             long elapsedMs = Math.max(0, now - bucket.lastRefillMillis);
-            bucket.tokens = Math.min(capacity, bucket.tokens + (elapsedMs / 1000.0)* refillPerSecond);
+            bucket.tokens = Math.min(capacity, bucket.tokens + (elapsedMs / 1000.0) * refillPerSecond);
             bucket.lastRefillMillis = now;
-            if(bucket.tokens >= 1.0){
-                bucket.tokens -=1.0;
+
+            if (bucket.tokens >= 1.0) {
+                bucket.tokens -= 1.0;
                 return RateLimitResult.allow((long) Math.floor(bucket.tokens));
             }
-            double missing = 1.0 -bucket.tokens;
-            long retryAfter = (long)Math.ceil(missing / refillPerSecond * 1000);
+
+            double missing = 1.0 - bucket.tokens;
+            long retryAfter = (long) Math.ceil((missing / refillPerSecond) * 1000);
             return RateLimitResult.deny(retryAfter);
         }
     }
-    private static final class Bucket{
+
+    public void evictIdle(long idleMs) {
+        long now = time.nowMillis();
+        buckets.entrySet().removeIf(e -> {
+            Bucket bucket = e.getValue();
+            synchronized (bucket) {
+                return (now - bucket.lastAccess) > idleMs;
+            }
+        });
+    }
+
+    public int trackedKeys() {
+        return buckets.size();
+    }
+
+    private static final class Bucket {
         double tokens;
         long lastRefillMillis;
-        Bucket(double tokens,long lastRefillMillis) {
+        long lastAccess;
+
+        Bucket(double tokens, long now) {
             this.tokens = tokens;
-            this.lastRefillMillis = lastRefillMillis;
+            this.lastRefillMillis = now;
+            this.lastAccess = now;
         }
     }
 }

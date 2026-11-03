@@ -27,8 +27,8 @@ public class FixedWindowRateLimiter implements RateLimiter{
         long now = time.nowMillis();
         long windowStart = now - (now % windowMs);
         WindowState state = states.computeIfAbsent(key, k -> new WindowState());
-
         synchronized (state) {
+            state.lastAccess = now;
             if (state.windowStart != windowStart) {
                 state.windowStart = windowStart;
                 state.count = 0;
@@ -43,5 +43,19 @@ public class FixedWindowRateLimiter implements RateLimiter{
     private static final class WindowState{
         long windowStart = -1;
         int count = 0;
+        long lastAccess;
+    }
+
+    public void evictIdle(long idleMs){
+        long now = time.nowMillis();
+        states.entrySet().removeIf(e -> {
+            WindowState s = e.getValue();
+            synchronized (s) {
+                return  now  - s.lastAccess > idleMs;
+            }
+        });
+    }
+    public int trackedKeys(){
+        return states.size();
     }
 }
