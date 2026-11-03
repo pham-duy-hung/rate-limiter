@@ -21,7 +21,11 @@ class ConcurrencyTest {
         var limiter = new FixedWindowRateLimiter(LIMIT, 60_000, new ManualTimeProvider(0));
         assertEquals(LIMIT, countAccepted(limiter));
     }
-
+    @RepeatedTest(20)
+    void fixedWindowCasNeverExceedsLimit() throws Exception {
+        var limiter = new FixedWindowCasRateLimiter(LIMIT, 60_000, new ManualTimeProvider(0));
+        assertEquals(LIMIT, countAccepted(limiter));
+    }
     @RepeatedTest(20)
     void slidingWindowCounterNeverExceedsLimit() throws Exception {
         var limiter = new SlidingWindowCounterRateLimiter(
