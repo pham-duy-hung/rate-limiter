@@ -8,6 +8,9 @@ public final class RateLimiterFactory {
     private RateLimiterFactory() {}
     // cùng 1 câu hình: tôi đa limit request trong windowMs từng mili s
     public static RateLimiter create(Algorithm algorithm, int limit, long windowMs, TimeProvider time) {
+        if (windowMs <= 0) {
+            throw new IllegalArgumentException("windowMs must be > 0");
+        }
         return switch (algorithm){
             case FIXED_WINDOW -> new FixedWindowRateLimiter(limit, windowMs, time);
             case SLIDING_WINDOW_COUNTER ->  new SlidingWindowCounterRateLimiter(limit, windowMs, time);

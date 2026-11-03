@@ -32,7 +32,7 @@ public class TokenBucketRateLimiter implements RateLimiter {
 
             long elapsedMs = Math.max(0, now - bucket.lastRefillMillis);
             bucket.tokens = Math.min(capacity, bucket.tokens + (elapsedMs / 1000.0) * refillPerSecond);
-            bucket.lastRefillMillis = now;
+            bucket.lastRefillMillis = Math.max(bucket.lastRefillMillis, now);
 
             if (bucket.tokens >= 1.0) {
                 bucket.tokens -= 1.0;
