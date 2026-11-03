@@ -43,7 +43,7 @@ public class SlidingWindowCounterRateLimiter implements RateLimiter {
                 long remaining = (long) Math.floor(limit - (estimated + 1));
                 return  RateLimitResult.allow(Math.max(0,remaining));
             }
-            return  RateLimitResult.deny(currStart + windowMs - now);
+            return RateLimitResult.deny(currStart + windowMs - now + 1);
         }
     }
     private static final class State{
