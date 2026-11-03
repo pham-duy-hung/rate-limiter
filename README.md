@@ -1,1 +1,1 @@
-![CI](https://github.com/pham-duy-hung/rate-limiter/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/pham-duy-hung/rate-limiter/actions/workflows/maven.yml/badge.svg)
