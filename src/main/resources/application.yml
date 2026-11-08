@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+ratelimiter:
+  enabled: true
+  default-limit: 100
+  default-window-seconds: 60
+  api-key-header: X-API-Key
+  trust-forwarded-for: false
+  idle-eviction-seconds: 3600
