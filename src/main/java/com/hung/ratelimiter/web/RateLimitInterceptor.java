@@ -2,6 +2,7 @@ package com.hung.ratelimiter.web;
 
 import com.hung.ratelimiter.core.RateLimitResult;
 import com.hung.ratelimiter.core.RateLimiter;
+import com.hung.ratelimiter.core.RateLimiterUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.core.annotation.AnnotatedElementUtils;
@@ -54,10 +55,22 @@ public class RateLimitInterceptor implements HandlerInterceptor {
                 endpointId, config.algorithm(), limit, windowSeconds * 1000);
 
         String clientKey = keyResolver.resolve(request, config.key());
-        RateLimitResult result = limiter.tryAcquire(clientKey);
+        RateLimitResult result;
+        try {
+            result = limiter.tryAcquire(clientKey);
+        } catch (RateLimiterUnavailableException e) {
+            response.setStatus(HttpStatus.SERVICE_UNAVAILABLE.value());
+            response.setHeader("Retry-After", "1");
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"error\":\"Rate limiter unavailable\"}");
+            return false;
+        }
 
         response.setHeader("X-RateLimit-Limit", String.valueOf(limit));
-        response.setHeader("X-RateLimit-Remaining", String.valueOf(result.remaining()));
+        if (result.remaining() >= 0) {
+            response.setHeader("X-RateLimit-Remaining", String.valueOf(result.remaining()));
+        }
 
         if (result.allowed()) {
             return true;
