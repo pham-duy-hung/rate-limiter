@@ -8,3 +8,17 @@ ratelimiter:
   api-key-header: X-API-Key
   trust-forwarded-for: false
   idle-eviction-seconds: 3600
+
+  spring:
+    data:
+      redis:
+        host: localhost
+        port: 6379
+        timeout: 200ms
+        connect-timeout: 200ms
+
+  ratelimiter:
+    store: memory            # memory hoặc redis
+    redis:
+      key-prefix: rl
+      fail-open: true
