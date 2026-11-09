@@ -13,8 +13,8 @@ import java.util.function.Supplier;
 /**
  * Đo độ chính xác của từng thuật toán bằng mô phỏng thời gian (không cần chờ thật).
  * Với mỗi kịch bản lưu lượng, đo hai thứ:
- *  - maxInWindow: số request nhiều nhất được nhận trong BẤT KỲ khoảng thời gian dài bằng một cửa sổ;
- *  - avgPerWindow: số request trung bình được nhận mỗi cửa sổ trong cả quá trình.
+ * - maxInWindow: số request nhiều nhất được nhận trong BẤT KỲ khoảng thời gian dài bằng một cửa sổ;
+ * - avgPerWindow: số request trung bình được nhận mỗi cửa sổ trong cả quá trình.
  * Cả hai được chia cho limit để thành tỉ lệ.
  */
 public class AccuracyExperiment {
@@ -23,16 +23,24 @@ public class AccuracyExperiment {
     static final long WINDOW_MS = 10_000;
     static final long DURATION_MS = 10 * 60_000;   // mô phỏng 10 phút
 
-    interface Scenario { List<Long> timestamps(); String name(); }
+    interface Scenario {
+        List<Long> timestamps();
 
-    /** Mỗi mili giây một request, liên tục. */
+        String name();
+    }
+
+    /**
+     * Mỗi mili giây một request, liên tục.
+     */
     static List<Long> flood() {
         List<Long> t = new ArrayList<>();
         for (long ms = 0; ms < DURATION_MS; ms++) t.add(ms);
         return t;
     }
 
-    /** Chỉ gửi dồn dập trong 1 giây quanh mỗi ranh giới cửa sổ (±500 ms), im lặng ở thời gian còn lại. */
+    /**
+     * Chỉ gửi dồn dập trong 1 giây quanh mỗi ranh giới cửa sổ (±500 ms), im lặng ở thời gian còn lại.
+     */
     static List<Long> boundaryAttack() {
         List<Long> t = new ArrayList<>();
         for (long boundary = WINDOW_MS; boundary < DURATION_MS; boundary += WINDOW_MS) {
@@ -41,7 +49,9 @@ public class AccuracyExperiment {
         return t;
     }
 
-    /** Các đợt dồn dập ngẫu nhiên xen kẽ những quãng nghỉ ngẫu nhiên. */
+    /**
+     * Các đợt dồn dập ngẫu nhiên xen kẽ những quãng nghỉ ngẫu nhiên.
+     */
     static List<Long> randomBursts(long seed) {
         Random rnd = new Random(seed);
         List<Long> t = new ArrayList<>();
@@ -54,7 +64,9 @@ public class AccuracyExperiment {
         return t;
     }
 
-    /** Đều đặn, nhanh gấp 1,5 lần giới hạn. */
+    /**
+     * Đều đặn, nhanh gấp 1,5 lần giới hạn.
+     */
     static List<Long> steadyOverLimit() {
         List<Long> t = new ArrayList<>();
         double gapMs = WINDOW_MS / (LIMIT * 1.5);
@@ -73,7 +85,9 @@ public class AccuracyExperiment {
         return ok;
     }
 
-    /** Số request nhiều nhất trong một khoảng [t, t + WINDOW_MS) bất kỳ (hai con trỏ). */
+    /**
+     * Số request nhiều nhất trong một khoảng [t, t + WINDOW_MS) bất kỳ (hai con trỏ).
+     */
     static int maxInAnyWindow(List<Long> ts) {
         int best = 0, left = 0;
         for (int right = 0; right < ts.size(); right++) {

@@ -5,14 +5,20 @@ import com.hung.ratelimiter.core.RateLimiter;
 import com.hung.ratelimiter.core.RateLimiterFactory;
 import com.hung.ratelimiter.core.SystemTimeProvider;
 
-/** Ước lượng bộ nhớ heap mà bộ giới hạn chiếm khi theo dõi N key khác nhau. */
+/**
+ * Ước lượng bộ nhớ heap mà bộ giới hạn chiếm khi theo dõi N key khác nhau.
+ */
 public class MemoryExperiment {
 
     static long usedMemory() {
         Runtime rt = Runtime.getRuntime();
         for (int i = 0; i < 5; i++) {
             System.gc();
-            try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
         return rt.totalMemory() - rt.freeMemory();
     }
