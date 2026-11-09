@@ -18,8 +18,9 @@ Dự án tập trung vào việc **hiểu và so sánh các thuật toán**: lõ
 - [Chế độ phân tán với Redis](#chế-độ-phân-tán-với-redis)
 - [Kiến trúc và quyết định thiết kế](#kiến-trúc-và-quyết-định-thiết-kế)
 - [Kiểm thử](#kiểm-thử)
+- [Đánh giá thực nghiệm](#đánh-giá-thực-nghiệm)
 - [Hạn chế đã biết](#hạn-chế-đã-biết)
-- [Kế hoạch tiếp theo](#kế-hoạch-tiếp-theo)
+- [Tiến độ và hướng phát triển](#tiến-độ-và-hướng-phát-triển)
 
 ## Tính năng
 
@@ -32,6 +33,7 @@ Dự án tập trung vào việc **hiểu và so sánh các thuật toán**: lõ
 - Cấu hình qua `application.yml`, có thể bật tắt toàn bộ.
 - Tự dọn các key không còn hoạt động: bằng chu kỳ quét ở chế độ bộ nhớ, bằng TTL của Redis ở chế độ phân tán.
 - Xử lý đa luồng đúng (khóa theo từng key), có test đồng thời.
+- Có thí nghiệm tái hiện được để đo độ chính xác và bộ nhớ của từng thuật toán (xem [Đánh giá thực nghiệm](#đánh-giá-thực-nghiệm)).
 
 ## Ba thuật toán
 
@@ -40,9 +42,12 @@ Dự án tập trung vào việc **hiểu và so sánh các thuật toán**: lõ
 | **Ý tưởng** | Đếm request trong từng cửa sổ thời gian cố định, hết cửa sổ thì reset | Ước lượng số request trong cửa sổ trượt từ bộ đếm của cửa sổ hiện tại và cửa sổ trước | Xô chứa token, nạp đều theo thời gian, mỗi request tiêu một token |
 | **Trạng thái mỗi key** | `count`, `windowStart` | `prev`, `curr`, `currWindowStart` | `tokens`, `lastRefill` |
 | **Burst** | Lỗi ở ranh giới cửa sổ: có thể lọt gần 2 × limit | Hạn chế được burst ở ranh giới | Cho phép burst có kiểm soát (tối đa `capacity`) |
-| **Độ chính xác** | Thấp | Khá (là ước lượng) | Tốt |
-| **Bộ nhớ** | Rất ít | Ít | Rất ít |
+| **Tối đa trong 1 cửa sổ bất kỳ** | ≈ 2,00 × limit (tấn công ranh giới) | 1,05 đến 1,71 × limit tùy lưu lượng | ≈ 1,99 × limit (burst cộng token nạp thêm) |
+| **Tốc độ trung bình dài hạn** | đúng limit (1,00 ×) | 0,85 đến 1,00 × limit (có thể chặn oan) | đúng tốc độ nạp (1,01 đến 1,02 ×) |
+| **Bộ nhớ mỗi key** | ≈ 120 byte | ≈ 136 byte | ≈ 129 byte |
 | **Độ phức tạp** | O(1) | O(1) | O(1) |
+
+*Số liệu độ chính xác và bộ nhớ lấy từ các thí nghiệm ở phần [Đánh giá thực nghiệm](#đánh-giá-thực-nghiệm) (limit = 100, cửa sổ 10 giây). Không thuật toán nào giữ trần tuyệt đối theo cửa sổ; cần chọn theo điều bạn muốn đảm bảo.*
 
 **Công thức chính**
 
@@ -299,7 +304,7 @@ docker-compose.yml           Redis để phát triển và chạy test
 
 Các quyết định đáng chú ý:
 
-- **Lõi tách khỏi Spring.** Toàn bộ thuật toán là Java thuần nên dễ kiểm thử, dễ benchmark. Nhờ interface `RateLimiter`, bản Redis được thêm vào mà không sửa phần web.
+- **Lõi tách khỏi Spring.** Toàn bộ thuật toán là Java thuần nên dễ kiểm thử và dễ tái sử dụng. Nhờ interface `RateLimiter`, bản Redis được thêm vào mà không sửa phần web.
 - **`TimeProvider` thay cho gọi thời gian hệ thống trực tiếp.** Test điều khiển được thời gian bằng đồng hồ giả, không cần `Thread.sleep`, kết quả tất định. Ở chế độ Redis, thời gian vẫn do `TimeProvider` cấp rồi truyền vào script.
 - **Khóa theo từng key** (`synchronized` trên trạng thái của key) trên `ConcurrentHashMap` ở chế độ bộ nhớ. `ConcurrentHashMap` chỉ bảo vệ thao tác trên map; chuỗi "đọc, so sánh, ghi" vẫn cần khóa để không vượt giới hạn khi nhiều luồng cùng gọi.
 - **Lua script cho chế độ phân tán,** vì cần tính nguyên tử giữa nhiều máy mà vẫn chỉ tốn một lần gọi mạng.
@@ -323,6 +328,70 @@ Bộ test chạy bằng `mvn test` (JUnit 5, Spring MockMvc), gồm:
 
 Mỗi lần đẩy code lên GitHub, toàn bộ test được chạy tự động bằng GitHub Actions, kèm một container Redis nên các test Redis chạy thật (xem huy hiệu CI ở đầu trang).
 
+## Đánh giá thực nghiệm
+
+Phần này trả lời hai câu hỏi bằng số đo thay vì nhận định: ba thuật toán giới hạn chính xác đến đâu, và mỗi key tốn bao nhiêu bộ nhớ. Cả hai thí nghiệm là chương trình Java trong `src/test/java/com/hung/ratelimiter/bench/`, chạy lại được.
+
+### Độ chính xác
+
+**Phương pháp.** Dùng đồng hồ giả (`ManualTimeProvider`) để mô phỏng 10 phút lưu lượng với `limit = 100` và cửa sổ 10 giây, nên kết quả **tất định** (chạy bao nhiêu lần cũng giống nhau). Mỗi kịch bản đo hai chỉ số, đều chia cho `limit`:
+
+- **Tối đa trong 1 cửa sổ bất kỳ:** trượt một khoảng dài đúng bằng một cửa sổ dọc theo trục thời gian, tìm chỗ có nhiều request được nhận nhất. Cho biết giới hạn có thực sự giữ được không.
+- **Trung bình mỗi cửa sổ:** tổng số request được nhận chia cho số cửa sổ. Cho biết tốc độ dài hạn có đúng không, tức có chặn oan người dùng hợp lệ không.
+
+Bốn kịch bản: *Flood* (mỗi mili giây một request liên tục), *BoundaryAttack* (chỉ dồn dập 1 giây quanh mỗi ranh giới cửa sổ), *RandomBursts* (các đợt dồn dập ngẫu nhiên, seed 42) và *Steady1.5x* (đều đặn nhanh gấp 1,5 lần giới hạn).
+
+| Kịch bản | Thuật toán | Tối đa trong 1 cửa sổ | Tỉ lệ | Trung bình mỗi cửa sổ | Tỉ lệ |
+|---|---|---|---|---|---|
+| Flood | Fixed Window | 100 | 1,00 | 100,0 | 1,00 |
+| Flood | Sliding Window Counter | 100 | 1,00 | 100,0 | 1,00 |
+| Flood | Token Bucket | 199 | 1,99 | 101,7 | 1,02 |
+| BoundaryAttack | Fixed Window | 200 | 2,00 | 100,0 | 1,00 |
+| BoundaryAttack | Sliding Window Counter | 105 | 1,05 | 98,4 | 0,98 |
+| BoundaryAttack | Token Bucket | 109 | 1,09 | 98,5 | 0,98 |
+| RandomBursts | Fixed Window | 200 | 2,00 | 100,0 | 1,00 |
+| RandomBursts | Sliding Window Counter | 171 | 1,71 | 84,7 | 0,85 |
+| RandomBursts | Token Bucket | 199 | 1,99 | 101,3 | 1,01 |
+| Steady1.5x | Fixed Window | 101 | 1,01 | 100,0 | 1,00 |
+| Steady1.5x | Sliding Window Counter | 101 | 1,01 | 100,0 | 1,00 |
+| Steady1.5x | Token Bucket | 151 | 1,51 | 101,7 | 1,02 |
+
+**Nhận xét**
+
+- **Fixed Window** cho lọt đúng gấp đôi giới hạn (2,00 ×) khi bị tấn công ở ranh giới cửa sổ, nhưng tốc độ dài hạn chính xác tuyệt đối (1,00 ×).
+- **Token Bucket** trong một cửa sổ bất kỳ có thể nhận gần gấp đôi (1,99 ×) vì nó cho phép burst bằng `capacity` rồi vẫn nạp thêm token trong lúc đó. Đổi lại tốc độ trung bình đúng bằng tốc độ nạp (1,01 đến 1,02 ×). Nó đảm bảo tốc độ trung bình và trần burst, không đảm bảo trần theo cửa sổ. Đây là thiết kế có chủ đích.
+- **Sliding Window Counter** xử lý tốt nhất việc tấn công ở ranh giới (1,05 ×). Nhưng là phép ước lượng dựa trên giả định request phân bố đều, nên với lưu lượng dồn cục ngẫu nhiên nó vẫn có thể nhận tới 1,71 × giới hạn trong một cửa sổ, đồng thời nhận trung bình chỉ 0,85 × (chặn oan người dùng hợp lệ).
+- **Kết luận:** không có thuật toán nào "chính xác nhất" theo mọi nghĩa. Muốn chặn burst ở ranh giới thì chọn Sliding Window Counter; muốn tốc độ dài hạn đúng và cho phép burst có kiểm soát thì chọn Token Bucket; muốn đơn giản và chấp nhận sai số ở ranh giới thì chọn Fixed Window.
+
+### Bộ nhớ
+
+**Phương pháp.** Tạo N key khác nhau (chuỗi địa chỉ IP), ép dọn rác nhiều lần rồi đo phần heap tăng thêm. Số liệu dưới đây đo bằng JDK 21; con số trên máy và phiên bản JVM khác sẽ gần nhưng không trùng.
+
+<!-- Thay bảng này bằng số bạn đo được khi chạy MemoryExperiment, và ghi đúng phiên bản JDK của bạn ở câu trên. -->
+
+| Thuật toán | Số key | Heap tăng thêm | Byte mỗi key |
+|---|---|---|---|
+| Fixed Window | 10.000 | 1,2 MB | 129 |
+| Fixed Window | 100.000 | 11,7 MB | 122 |
+| Fixed Window | 1.000.000 | 114,8 MB | 120 |
+| Sliding Window Counter | 10.000 | 1,3 MB | 135 |
+| Sliding Window Counter | 100.000 | 13,2 MB | 138 |
+| Sliding Window Counter | 1.000.000 | 130,1 MB | 136 |
+| Token Bucket | 10.000 | 1,2 MB | 127 |
+| Token Bucket | 100.000 | 12,4 MB | 130 |
+| Token Bucket | 1.000.000 | 122,4 MB | 128 |
+
+**Nhận xét**
+
+- Chi phí tăng tuyến tính theo số key: khoảng 120 đến 140 byte mỗi key, tức khoảng 115 đến 130 MB cho 1 triệu key.
+- Ba thuật toán gần như ngang nhau (chênh cỡ 10 đến 15 byte mỗi key): phần lớn bộ nhớ nằm ở chuỗi key và nút của `ConcurrentHashMap`, không nằm ở đối tượng trạng thái.
+- Mỗi endpoint có một bộ giới hạn riêng nên chi phí nhân lên theo số endpoint dùng chung nhiều client. Đó là lý do cần dọn key không hoạt động (`idle-eviction-seconds`), và cũng là lý do việc bịa nhiều API key có thể làm phình bộ nhớ.
+
+### Chạy lại thí nghiệm
+
+- **Độ chính xác:** mở `AccuracyExperiment.java` trong IntelliJ và chạy hàm `main`. Chương trình in ra bảng Markdown; vì kết quả tất định, bảng phải khớp bảng ở trên.
+- **Bộ nhớ:** chạy `MemoryExperiment` với tùy chọn VM `-Xmx2g` (Run > Edit Configurations > VM options) để kết quả ổn định.
+
 ## Hạn chế đã biết
 
 - **Chế độ `memory` chỉ đúng với một instance.** Chạy nhiều instance cần chế độ `redis`.
@@ -332,15 +401,16 @@ Mỗi lần đẩy code lên GitHub, toàn bộ test được chạy tự độn
 - **`X-Forwarded-For` chỉ nên bật khi có proxy tin cậy**, vì client có thể tự gửi giá trị giả.
 - **Giới hạn theo IP có thể chặn oan** những người dùng chung một địa chỉ IP công cộng (sau NAT hoặc mạng công ty).
 - **Đồng hồ nhảy lùi:** Token Bucket không nạp thêm token khi thời gian lùi; Fixed Window và Sliding Window Counter khi lùi sang một cửa sổ cũ sẽ tính lại bộ đếm, tức tạm thời nới lỏng giới hạn.
-- **Sliding Window Counter là ước lượng**, dựa trên giả định request ở cửa sổ trước phân bố đều. Giá trị `Retry-After` của thuật toán này là cận trên an toàn, không phải thời điểm sớm nhất có thể thử lại.
+- **Sliding Window Counter là ước lượng**, dựa trên giả định request ở cửa sổ trước phân bố đều. Với lưu lượng dồn cục ngẫu nhiên, thí nghiệm đo được nó có thể nhận tới 1,71 × `limit` trong một cửa sổ và nhận trung bình chỉ 0,85 × `limit` (có thể chặn oan). Giá trị `Retry-After` của thuật toán này là cận trên an toàn, không phải thời điểm sớm nhất có thể thử lại.
+- **Không thuật toán nào giữ trần tuyệt đối theo cửa sổ.** Fixed Window cho lọt tới 2,00 × `limit` ở ranh giới cửa sổ; Token Bucket tới 1,99 × (burst cộng token nạp thêm, nhưng tốc độ dài hạn đúng). Xem [Đánh giá thực nghiệm](#đánh-giá-thực-nghiệm).
 
-## Kế hoạch tiếp theo
+## Tiến độ và hướng phát triển
 
 - [x] Ba thuật toán với bộ test đầy đủ
 - [x] Tích hợp Spring Boot với `@RateLimit`
 - [x] Chạy test tự động bằng GitHub Actions
 - [x] Chế độ phân tán: lưu trạng thái bằng Redis, dùng Lua script để thao tác nguyên tử
-- [ ] Benchmark (k6, JMH): thông lượng, độ trễ p50/p95/p99, bộ nhớ theo số lượng key, so sánh bộ nhớ với Redis
+- [x] Đánh giá thực nghiệm: độ chính xác (mô phỏng) và bộ nhớ theo số key
 - [ ] Số liệu giám sát (Micrometer, Prometheus)
 - [ ] Chọn chính sách fail-open hoặc fail-closed riêng cho từng endpoint
 - [ ] Tùy chọn lấy giờ từ Redis (`TIME`) để loại bỏ ảnh hưởng của lệch đồng hồ
