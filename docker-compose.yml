@@ -5,3 +5,15 @@ services:
     ports:
       - "6379:6379"
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  app:
+    profiles: ["app"]
+    build: .
+    container_name: ratelimiter-app
+    depends_on:
+      - redis
+    ports:
+      - "8080:8080"
+    environment:
+      RATELIMITER_STORE: redis
+      SPRING_DATA_REDIS_HOST: redis

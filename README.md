@@ -1,12 +1,30 @@
 # Rate Limiter cho Spring Boot
 
 ![CI](https://github.com/pham-duy-hung/rate-limiter/actions/workflows/maven.yml/badge.svg)
+![Java 25](https://img.shields.io/badge/Java-25-orange)
+![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4-6DB33F)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 Thư viện giới hạn tốc độ request (rate limiter) viết bằng **Java 25** và **Spring Boot 4**, cài đặt từ đầu ba thuật toán **Fixed Window**, **Sliding Window Counter** và **Token Bucket**. Chỉ cần gắn annotation `@RateLimit` lên một endpoint là endpoint đó được giới hạn; khi vượt giới hạn, client nhận mã **HTTP 429** kèm các header `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`.
 
 Trạng thái đếm có thể lưu **trong bộ nhớ** (một instance) hoặc **trong Redis** (nhiều instance dùng chung một bộ đếm, thao tác nguyên tử bằng Lua script). Đổi giữa hai chế độ chỉ bằng một dòng cấu hình.
 
 Dự án tập trung vào việc **hiểu và so sánh các thuật toán**: lõi thuật toán là Java thuần (không phụ thuộc Spring), được kiểm thử kỹ, và được tích hợp vào Spring Boot như một lớp mỏng ở bên ngoài.
+
+> **English summary:** A rate limiter for Spring Boot built from scratch with three algorithms
+> (Fixed Window, Sliding Window Counter, Token Bucket). State can live in memory or in Redis
+> (atomic Lua scripts) so several instances share one counter. Includes concurrency, property-based
+> and integration tests, plus a measured comparison of the algorithms' accuracy and memory use.
+
+## Demo
+
+Phản hồi khi vượt giới hạn (HTTP 429 kèm các header giúp client tự điều tiết):
+
+![Phản hồi 429 khi vượt giới hạn](docs/images/429-response.png)
+
+Hai instance cùng dùng một bộ đếm Redis: request thứ sáu bị chặn dù được chia cho hai instance.
+
+![Hai instance dùng chung bộ đếm Redis](docs/images/two-instances.gif)
 
 ## Mục lục
 
@@ -21,6 +39,7 @@ Dự án tập trung vào việc **hiểu và so sánh các thuật toán**: lõ
 - [Đánh giá thực nghiệm](#đánh-giá-thực-nghiệm)
 - [Hạn chế đã biết](#hạn-chế-đã-biết)
 - [Tiến độ và hướng phát triển](#tiến-độ-và-hướng-phát-triển)
+- [Giấy phép](#giấy-phép)
 
 ## Tính năng
 
@@ -34,6 +53,7 @@ Dự án tập trung vào việc **hiểu và so sánh các thuật toán**: lõ
 - Tự dọn các key không còn hoạt động: bằng chu kỳ quét ở chế độ bộ nhớ, bằng TTL của Redis ở chế độ phân tán.
 - Xử lý đa luồng đúng (khóa theo từng key), có test đồng thời.
 - Có thí nghiệm tái hiện được để đo độ chính xác và bộ nhớ của từng thuật toán (xem [Đánh giá thực nghiệm](#đánh-giá-thực-nghiệm)).
+- Chạy được cả hệ thống (ứng dụng và Redis) chỉ bằng một lệnh Docker Compose.
 
 ## Ba thuật toán
 
@@ -81,7 +101,17 @@ mvn spring-boot:run
 
 Nếu dùng IntelliJ IDEA: mở thư mục chứa `pom.xml`, chờ Maven nạp xong, mở `RateLimiterApplication.java` rồi bấm mũi tên xanh cạnh hàm `main`.
 
-Để dùng chế độ Redis, xem [Chế độ phân tán với Redis](#chế-độ-phân-tán-với-redis).
+### Chạy cả hệ thống bằng Docker
+
+```bash
+mvn -DskipTests package
+docker compose --profile app up --build
+curl -i http://localhost:8080/api/ping
+```
+
+Lệnh trên chạy ứng dụng (ở chế độ `redis`) cùng một container Redis. Tắt bằng `Ctrl + C` rồi `docker compose --profile app down`.
+
+Để dùng chế độ Redis theo cách khác (chạy ứng dụng trực tiếp, chạy hai instance), xem [Chế độ phân tán với Redis](#chế-độ-phân-tán-với-redis).
 
 ## Cách dùng
 
@@ -367,8 +397,6 @@ Bốn kịch bản: *Flood* (mỗi mili giây một request liên tục), *Bound
 
 **Phương pháp.** Tạo N key khác nhau (chuỗi địa chỉ IP), ép dọn rác nhiều lần rồi đo phần heap tăng thêm. Số liệu dưới đây đo bằng JDK 21; con số trên máy và phiên bản JVM khác sẽ gần nhưng không trùng.
 
-<!-- Thay bảng này bằng số bạn đo được khi chạy MemoryExperiment, và ghi đúng phiên bản JDK của bạn ở câu trên. -->
-
 | Thuật toán | Số key | Heap tăng thêm | Byte mỗi key |
 |---|---|---|---|
 | Fixed Window | 10.000 | 1,2 MB | 129 |
@@ -411,10 +439,15 @@ Bốn kịch bản: *Flood* (mỗi mili giây một request liên tục), *Bound
 - [x] Chạy test tự động bằng GitHub Actions
 - [x] Chế độ phân tán: lưu trạng thái bằng Redis, dùng Lua script để thao tác nguyên tử
 - [x] Đánh giá thực nghiệm: độ chính xác (mô phỏng) và bộ nhớ theo số key
+- [x] Đóng gói: chạy cả hệ thống bằng Docker Compose, giấy phép MIT, bản phát hành v1.0.0
 - [ ] Số liệu giám sát (Micrometer, Prometheus)
 - [ ] Chọn chính sách fail-open hoặc fail-closed riêng cho từng endpoint
 - [ ] Tùy chọn lấy giờ từ Redis (`TIME`) để loại bỏ ảnh hưởng của lệch đồng hồ
 
+## Giấy phép
+
+Phát hành theo giấy phép MIT. Xem file [LICENSE](LICENSE).
+
 ## Tác giả
 
-Hung
+Hung ([pham-duy-hung](https://github.com/pham-duy-hung))
