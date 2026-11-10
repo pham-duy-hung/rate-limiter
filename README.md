@@ -20,11 +20,8 @@ Dự án tập trung vào việc **hiểu và so sánh các thuật toán**: lõ
 
 Phản hồi khi vượt giới hạn (HTTP 429 kèm các header giúp client tự điều tiết):
 
-![Phản hồi 429 khi vượt giới hạn](docs/images/429-response.png)
+![Phản hồi 429 khi vượt giới hạn](docs/429-response.png)
 
-Hai instance cùng dùng một bộ đếm Redis: request thứ sáu bị chặn dù được chia cho hai instance.
-
-![Hai instance dùng chung bộ đếm Redis](docs/images/two-instances.gif)
 
 ## Mục lục
 
